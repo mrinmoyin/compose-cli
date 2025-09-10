@@ -4,9 +4,10 @@ import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.help
 import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.mordant.rendering.TextColors.*
 import com.github.ajalt.mordant.rendering.TextStyles.*
+import com.gitlab.notscripter.composecli.compose.Device
+import com.gitlab.notscripter.composecli.compose.getAdbDevices
 import com.gitlab.notscripter.composecli.compose.getApplicationId
 import com.gitlab.notscripter.composecli.compose.getMainActivity
 import com.gitlab.notscripter.composecli.compose.shln
@@ -16,10 +17,30 @@ class Run : SuspendingCliktCommand() {
     override fun help(context: Context) =
         "   Build and launch on a device or emulator — no mouse needed"
 
-    private val deviceId by
-        option("-d", "--device").required().help("ADB device ID (use `adb devices` to list)")
+    private var deviceId by
+        option("-d", "--device").help("ADB device ID (use `adb devices` to list)")
 
     override suspend fun run() {
+        if (!deviceId) {
+            val adbDevices: List<Device> = getAdbDevices()
+            when (adbDevices.size) {
+                1 -> deviceId = adbDevices[0].id
+                in 2..10 ->
+                    error(
+                        "There is more than one adb devices, please specify one deviceId with '-d' or '--devide' option."
+                    )
+                else -> error("There is no adb devices found.")
+            }
+
+            // if (adbDevices.size < 1) error("There is no adb devices found.")
+            // if (adbDevices.size == 1) deviceId = adbDevices[0].id
+            // if (adbDevices.size > 1)
+            //     error(
+            //         "There is more than one adb devices, please specify one deviceId with '-d' or
+            // '--devide'"
+            //     )
+        }
+
         val appId = getApplicationId(File("./"))
         val mainActivity = getMainActivity(deviceId, appId)
 
