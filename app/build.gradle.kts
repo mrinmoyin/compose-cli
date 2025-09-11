@@ -28,7 +28,7 @@ tasks.register<Copy>("copyTemplates") {
 
 distributions {
     main {
-        distributionBaseName.set("${projectName}")
+        // distributionBaseName.set("compose-cli")
         contents { from("build/libs/templates") { into("lib/templates") } }
     }
 }
