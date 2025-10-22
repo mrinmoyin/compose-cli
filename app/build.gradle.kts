@@ -19,7 +19,7 @@ application { mainClass = "com.gitlab.notscripter.composecli.MainKt" }
 
 distributions {
     main {
-        distributionBaseName.set("compose-cli")
+        // distributionBaseName.set("compose-cli")
         contents { from("../templates") { into("lib/templates") } }
     }
 }
