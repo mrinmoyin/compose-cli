@@ -8,70 +8,66 @@ import com.github.ajalt.mordant.rendering.TextStyles.*
 import com.github.ajalt.mordant.terminal.Terminal
 import com.gitlab.notscripter.composecli.model.*
 import java.io.File
-import java.io.IOException
 import java.net.URLDecoder
 import java.util.regex.Pattern
-import kotlin.collections.emptyList
 import kotlin.io.deleteRecursively
 
 val t: Terminal = Terminal()
 
-fun sh(command: String): String {
-    return ProcessBuilder("sh", "-c", command)
-        .redirectErrorStream(true)
-        .start()
-        .inputStream
-        .bufferedReader()
-        .readText()
-        .trim()
-}
-
-fun shln(command: String, label: String = "Loading..."): String {
-    var process: Process? = null
-
-    val spinnerFrames = listOf("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
-
-    val animation =
-        t.textAnimation<Int> { frame ->
-            val spinner = spinnerFrames[frame % spinnerFrames.size]
-            green("$spinner $label")
-        }
-
+fun sh(command: String, label: String? = null, printOutput: Boolean = false): String? {
+    var process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
     t.cursor.hide(showOnExit = true)
 
-    try {
-        process = ProcessBuilder("sh", "-c", command).start()
+    /*
+    Runtime.getRuntime().addShutdownHook(Thread { if (process.isAlive) process.destroyForcibly() })
+    */
+
+    if (!label.isNullOrEmpty()) {
+        val spinnerFrames = listOf("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
+        val animation =
+            t.textAnimation<Int> { frame ->
+                val spinner = spinnerFrames[frame % spinnerFrames.size]
+                green("$spinner $label...")
+            }
 
         var frame = 0
         while (process.isAlive) {
             animation.update(frame++)
             Thread.sleep(100)
         }
-        val output = process.inputStream.bufferedReader().readText()
 
         if (process.exitValue() != 0) {
-            // val errorOutput = process.errorStream.bufferedReader().readText()
-            // throw IOException("❌Failed to execute command: ${command}")
-            // t.println(red("❌Failed to execute command: ${command}"))
-            throw IOException()
+            animation.clear()
+            t.println(red("❌$label..."))
+            t.println(red("❌Failed to execute command: ${command}"))
+            return null
         }
 
         animation.clear()
-        t.println(green("✔️ $label"))
+        t.println(green("✔️ $label..."))
 
-        return output.trim()
-    } catch (e: IOException) {
-        animation.clear()
-        t.println(red("❌$label"))
-
-        // throw IOException(e.message)
-        t.println(red("❌Failed to execute command: ${command}"))
-        throw IOException()
-    } finally {
         animation.stop()
-        process?.destroy()
-        t.cursor.show()
+    } else if (printOutput == true) {
+        process.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                when {
+                    line.contains(" D ") -> t.println(blue(line))
+                    line.contains(" I ") -> t.println(green(line))
+                    line.contains(" W ") -> t.println(yellow(line))
+                    line.contains(" E ") -> t.println(red(line))
+                    line.contains(" F ") -> t.println(red(line))
+                }
+            }
+        }
+        process.waitFor()
     }
+
+    val output = process.inputStream.bufferedReader().readText().trim()
+    process.destroy()
+    t.cursor.show()
+    return output
 }
 
 fun matchAndReplace(templateDir: File, replacements: Map<String, String>) {
@@ -90,111 +86,6 @@ fun matchAndReplace(templateDir: File, replacements: Map<String, String>) {
         }
 }
 
-fun listTemplates(): List<String> {
-    val templatesDir = getTemplatesDir()
-    return templatesDir.listFiles { file -> file.isDirectory }?.map { it.name } ?: emptyList()
-}
-
-fun getApplicationName(pwd: File): String {
-    val file = File("${pwd}/settings.gradle.kts")
-    if (!file.exists()) {
-        throw IOException()
-    }
-    val appName =
-        file
-            .readLines()
-            .map { it.trim() }
-            .find { it.startsWith("rootProject.name") }
-            ?.substringAfter("=")
-            ?.trim()
-            ?.removeSurrounding("\"")
-
-    if (appName.isNullOrBlank()) {
-        throw IOException()
-    }
-
-    return appName
-}
-
-fun getApplicationId(pwd: File): String {
-    val file = File("${pwd}/app/build.gradle.kts")
-    if (!file.exists()) {
-        throw IOException()
-    }
-    val appId =
-        file
-            .readLines()
-            .map { it.trim() }
-            .find { it.startsWith("applicationId") }
-            ?.substringAfter("=")
-            ?.trim()
-            ?.removeSurrounding("\"")
-
-    if (appId.isNullOrBlank()) {
-        throw IOException()
-    }
-
-    return appId
-}
-
-fun getMainActivity(deviceId: String, applicationId: String): String {
-    val output =
-        sh("adb -s ${deviceId} shell cmd package resolve-activity --brief ${applicationId}")
-
-    var mainActivity = output.lines().find { it.contains("/") }
-
-    if (mainActivity.isNullOrBlank()) {
-        throw IOException()
-    }
-
-    return mainActivity
-}
-
-fun updateTemplate(templateDir: File, tempDir: File, projectName: String, projectId: String) {
-    val templateAppName = getApplicationName(templateDir)
-    val templateAppId = getApplicationId(templateDir)
-
-    val topLevelPath = templateAppId.substringBefore(".")
-
-    matchAndReplace(tempDir, mapOf(templateAppId to projectId, templateAppName to projectName))
-
-    val packagePath = projectId.replace(".", File.separator)
-    val templatePackagePath = templateAppId.replace(".", File.separator)
-
-    val mainJavaDir = File("${tempDir}/app/src/main/java")
-    val testJavaDir = File("${tempDir}/app/src/test/java")
-    val androidTestJavaDir = File("${tempDir}/app/src/androidTest/java")
-
-    val tempMainJavaDir = File(mainJavaDir, "temp")
-    val tempTestJavaDir = File(testJavaDir, "temp")
-    val tempAndroidTestJavaDir = File(androidTestJavaDir, "temp")
-
-    val templateMainPackageDir = File(tempMainJavaDir, templatePackagePath.substringAfter("/"))
-    val templateTestPackageDir = File(tempTestJavaDir, templatePackagePath.substringAfter("/"))
-    val templateAndroidTestPackageDir =
-        File(tempAndroidTestJavaDir, templatePackagePath.substringAfter("/"))
-
-    val tempPackageDir = File(mainJavaDir, packagePath)
-    val tempTestDir = File(testJavaDir, packagePath)
-    val tempAndroidTestDir = File(androidTestJavaDir, packagePath)
-
-    File(mainJavaDir, topLevelPath).renameTo(tempMainJavaDir)
-    File(testJavaDir, topLevelPath).renameTo(tempTestJavaDir)
-    File(androidTestJavaDir, topLevelPath).renameTo(tempAndroidTestJavaDir)
-
-    tempPackageDir.mkdirs()
-    tempTestDir.mkdirs()
-    tempAndroidTestDir.mkdirs()
-
-    templateMainPackageDir.copyRecursively(tempPackageDir, overwrite = true)
-    templateTestPackageDir.copyRecursively(tempTestDir, overwrite = true)
-    templateAndroidTestPackageDir.copyRecursively(tempAndroidTestDir, overwrite = true)
-
-    tempMainJavaDir.deleteRecursively()
-    tempTestJavaDir.deleteRecursively()
-    tempAndroidTestJavaDir.deleteRecursively()
-}
-
 fun getTemplatesDir(): File {
     val jarPath =
         File(
@@ -207,13 +98,21 @@ fun getTemplatesDir(): File {
     return jarPath.parentFile.resolve("templates")
 }
 
-fun getTemplateDir(templateName: String): File {
+fun getTemplateDir(templateName: String): File? {
     val templatesDir = getTemplatesDir()
-    return templatesDir.resolve(templateName)
+    val templatePath = templatesDir.resolve(templateName)
+    if (!templatePath.exists()) {
+        t.println(red("'${templatesDir}/${templateName}' not found."))
+        return null
+    }
+
+    return templatePath
 }
 
-fun getAdbDevices(): List<Device> {
+fun getAdbDevices(): List<Device>? {
     val output = sh("adb devices -l")
+    if (output == null) return null
+
     val devices: List<Device> =
         output
             .split("\n")
@@ -232,6 +131,10 @@ fun getAdbDevices(): List<Device> {
                     )
             }
 
+    if (devices.isEmpty()) {
+        t.println(red("adb devices not found."))
+        return null
+    }
     return devices
 }
 
@@ -245,4 +148,133 @@ fun isValidHexaCode(hex: String): Boolean {
 
 fun resizeImage(image: File, size: String, output: File) {
     sh("magick ${image} -resize ${size} ${output}")
+}
+
+fun listTemplates(): List<String>? {
+    val templatesDir = getTemplatesDir()
+    val templates = templatesDir.listFiles { file -> file.isDirectory }?.map { it.name }
+    if (templates.isNullOrEmpty()) {
+        t.println("No template found.")
+        return null
+    }
+    return templates
+}
+
+fun getApplicationName(pwd: File): String? {
+    val file = File("${pwd}/settings.gradle.kts")
+    if (!file.exists()) {
+        t.println(red("'${pwd}/settings.gradle.kts' not found"))
+        return null
+    }
+    val appName =
+        file
+            .readLines()
+            .map { it.trim() }
+            .find { it.startsWith("rootProject.name") }
+            ?.substringAfter("=")
+            ?.trim()
+            ?.removeSurrounding("\"")
+
+    if (appName.isNullOrBlank()) {
+        t.println(red("'rootProject.name' not found in '${file}'"))
+        return null
+    }
+
+    return appName
+}
+
+fun getApplicationId(pwd: File): String? {
+    val file = File("${pwd}/app/build.gradle.kts")
+    if (!file.exists()) {
+        t.println(red("'${file}' not found"))
+        return null
+    }
+    val appId =
+        file
+            .readLines()
+            .map { it.trim() }
+            .find { it.startsWith("applicationId") }
+            ?.substringAfter("=")
+            ?.trim()
+            ?.removeSurrounding("\"")
+
+    if (appId.isNullOrBlank()) {
+        t.println(red("'applicationId' not found in '${file}'"))
+        return null
+    }
+
+    return appId
+}
+
+fun getMainActivity(deviceId: String, applicationId: String): String? {
+    val output =
+        sh("adb -s ${deviceId} shell cmd package resolve-activity --brief ${applicationId}")
+    if (output == null) return null
+
+    var mainActivity = output.lines().find { it.contains("/") }
+
+    if (mainActivity.isNullOrBlank()) {
+        t.println(red("'MainActivity' not found."))
+        return null
+    }
+
+    return mainActivity
+}
+
+fun updateTemplate(
+    templateDir: File,
+    tempDir: File,
+    projectName: String,
+    projectId: String,
+): Boolean {
+    val templateAppName = getApplicationName(templateDir)
+    val templateAppId = getApplicationId(templateDir)
+
+    if (templateAppId == null || templateAppName == null) return false
+
+    val topLevelPath = templateAppId.substringBefore(".")
+
+    matchAndReplace(tempDir, mapOf(templateAppId to projectId, templateAppName to projectName))
+
+    val packagePath = projectId.replace(".", File.separator)
+    val templatePackagePath = templateAppId.replace(".", File.separator)
+
+    val mainJavaDir = File("${tempDir}/app/src/main/java")
+    val testJavaDir = File("${tempDir}/app/src/test/java")
+    val androidTestJavaDir = File("${tempDir}/app/src/androidTest/java")
+
+    if (!mainJavaDir.exists()) {
+        return false
+    }
+
+    val tempMainJavaDir = File(mainJavaDir, "temp")
+    val templateMainPackageDir = File(tempMainJavaDir, templatePackagePath.substringAfter("/"))
+    val tempPackageDir = File(mainJavaDir, packagePath)
+    File(mainJavaDir, topLevelPath).renameTo(tempMainJavaDir)
+    tempPackageDir.mkdirs()
+    templateMainPackageDir.copyRecursively(tempPackageDir, overwrite = true)
+    tempMainJavaDir.deleteRecursively()
+
+    if (testJavaDir.exists()) {
+        val tempTestJavaDir = File(testJavaDir, "temp")
+        val templateTestPackageDir = File(tempTestJavaDir, templatePackagePath.substringAfter("/"))
+        val tempTestDir = File(testJavaDir, packagePath)
+        File(testJavaDir, topLevelPath).renameTo(tempTestJavaDir)
+        tempTestDir.mkdirs()
+        templateTestPackageDir.copyRecursively(tempTestDir, overwrite = true)
+        tempTestJavaDir.deleteRecursively()
+    }
+
+    if (testJavaDir.exists()) {
+        val tempAndroidTestJavaDir = File(androidTestJavaDir, "temp")
+        val templateAndroidTestPackageDir =
+            File(tempAndroidTestJavaDir, templatePackagePath.substringAfter("/"))
+        val tempAndroidTestDir = File(androidTestJavaDir, packagePath)
+        File(androidTestJavaDir, topLevelPath).renameTo(tempAndroidTestJavaDir)
+        tempAndroidTestDir.mkdirs()
+        templateAndroidTestPackageDir.copyRecursively(tempAndroidTestDir, overwrite = true)
+        tempAndroidTestJavaDir.deleteRecursively()
+    }
+
+    return true
 }
