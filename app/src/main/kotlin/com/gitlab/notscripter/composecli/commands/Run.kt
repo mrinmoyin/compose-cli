@@ -2,7 +2,6 @@ package com.gitlab.notscripter.composecli
 
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.help
 import com.github.ajalt.clikt.parameters.options.option
@@ -22,8 +21,8 @@ class Run : SuspendingCliktCommand() {
 
     private val deviceId by
         option("-d", "--device").help("ADB device ID (use `adb devices` to list)")
-    private val logcat by option("-l", "--log").flag().help("Show log (default tag=MainActivity)")
-    private val tag by option("-t", "--tag").help("Tag for logcat").default("MainActivity")
+    private val logcat by option("-l", "--log").flag().help("Show log")
+    private val tag by option("-t", "--tag").help("Filter log with tag. ie: MainActivity")
 
     override suspend fun run() {
         val devices: List<Device>? = getAdbDevices()
@@ -65,8 +64,14 @@ class Run : SuspendingCliktCommand() {
         )
 
         // Logcat
+        t.println("adb logcat --pid=$(adb shell pidof -s ${appId}) '*${tag ?: ":S ${tag}"}'")
+
         if (logcat) {
-            sh("adb logcat --pid=$(adb shell pidof -s ${appId}) '*:S ${tag}'", null, true)
+            sh(
+                "adb logcat --pid=$(adb shell pidof -s ${appId}) '*${tag ?: ":S ${tag}"}'",
+                null,
+                true,
+            )
         }
     }
 }

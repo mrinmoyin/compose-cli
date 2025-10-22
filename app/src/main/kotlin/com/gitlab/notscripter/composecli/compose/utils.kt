@@ -243,34 +243,38 @@ fun updateTemplate(
     val testJavaDir = File("${tempDir}/app/src/test/java")
     val androidTestJavaDir = File("${tempDir}/app/src/androidTest/java")
 
+    if (!mainJavaDir.exists()) {
+        return false
+    }
+
     val tempMainJavaDir = File(mainJavaDir, "temp")
-    val tempTestJavaDir = File(testJavaDir, "temp")
-    val tempAndroidTestJavaDir = File(androidTestJavaDir, "temp")
-
     val templateMainPackageDir = File(tempMainJavaDir, templatePackagePath.substringAfter("/"))
-    val templateTestPackageDir = File(tempTestJavaDir, templatePackagePath.substringAfter("/"))
-    val templateAndroidTestPackageDir =
-        File(tempAndroidTestJavaDir, templatePackagePath.substringAfter("/"))
-
     val tempPackageDir = File(mainJavaDir, packagePath)
-    val tempTestDir = File(testJavaDir, packagePath)
-    val tempAndroidTestDir = File(androidTestJavaDir, packagePath)
-
     File(mainJavaDir, topLevelPath).renameTo(tempMainJavaDir)
-    File(testJavaDir, topLevelPath).renameTo(tempTestJavaDir)
-    File(androidTestJavaDir, topLevelPath).renameTo(tempAndroidTestJavaDir)
-
     tempPackageDir.mkdirs()
-    tempTestDir.mkdirs()
-    tempAndroidTestDir.mkdirs()
-
     templateMainPackageDir.copyRecursively(tempPackageDir, overwrite = true)
-    templateTestPackageDir.copyRecursively(tempTestDir, overwrite = true)
-    templateAndroidTestPackageDir.copyRecursively(tempAndroidTestDir, overwrite = true)
-
     tempMainJavaDir.deleteRecursively()
-    tempTestJavaDir.deleteRecursively()
-    tempAndroidTestJavaDir.deleteRecursively()
+
+    if (testJavaDir.exists()) {
+        val tempTestJavaDir = File(testJavaDir, "temp")
+        val templateTestPackageDir = File(tempTestJavaDir, templatePackagePath.substringAfter("/"))
+        val tempTestDir = File(testJavaDir, packagePath)
+        File(testJavaDir, topLevelPath).renameTo(tempTestJavaDir)
+        tempTestDir.mkdirs()
+        templateTestPackageDir.copyRecursively(tempTestDir, overwrite = true)
+        tempTestJavaDir.deleteRecursively()
+    }
+
+    if (testJavaDir.exists()) {
+        val tempAndroidTestJavaDir = File(androidTestJavaDir, "temp")
+        val templateAndroidTestPackageDir =
+            File(tempAndroidTestJavaDir, templatePackagePath.substringAfter("/"))
+        val tempAndroidTestDir = File(androidTestJavaDir, packagePath)
+        File(androidTestJavaDir, topLevelPath).renameTo(tempAndroidTestJavaDir)
+        tempAndroidTestDir.mkdirs()
+        templateAndroidTestPackageDir.copyRecursively(tempAndroidTestDir, overwrite = true)
+        tempAndroidTestJavaDir.deleteRecursively()
+    }
 
     return true
 }
