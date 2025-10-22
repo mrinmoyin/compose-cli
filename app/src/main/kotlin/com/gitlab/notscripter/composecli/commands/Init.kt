@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.types.file
 import com.github.ajalt.mordant.input.interactiveSelectList
 import com.github.ajalt.mordant.rendering.TextColors.*
 import com.github.ajalt.mordant.rendering.TextStyles.*
+import com.github.ajalt.mordant.terminal.prompt
 import com.gitlab.notscripter.composecli.compose.getTemplateDir
 import com.gitlab.notscripter.composecli.compose.t
 import com.gitlab.notscripter.composecli.compose.updateTemplate
