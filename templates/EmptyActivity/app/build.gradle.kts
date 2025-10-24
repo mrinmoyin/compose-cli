@@ -23,7 +23,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -33,14 +33,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+        freeCompilerArgs += "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
     }
-    buildFeatures {
-        compose = true
-    }
+    buildFeatures { compose = true }
 }
 
 dependencies {
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -57,3 +55,4 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
+
